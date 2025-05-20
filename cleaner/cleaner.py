@@ -1,66 +1,71 @@
+import csv
 import boto3
 import gzip
 import json
 import unicodedata
 from bs4 import BeautifulSoup
-import os
 import html
+import pandas as pd
+from io import StringIO
 
 # Config
 bucket = "crypto-search-pipeline-iqtedar"
 region = "us-east-1"
 prefix_raw = "raw_docs/"
-prefix_cleaned = "cleaned_docs/"
+output_csv_key = "final_csv/news_cleaned.csv"
 
 s3 = boto3.client("s3", region_name=region)
 
 def clean_text(text):
     if not text:
         return ""
-    text = html.unescape(text)
+    text = html.unescape(text) 
     text = BeautifulSoup(text, "html.parser").get_text()
     text = unicodedata.normalize("NFKD", text)
     return " ".join(text.lower().split())
 
-def clean_documents():
-    # Get all raw keys
+def clean_documents_to_csv():
     paginator = s3.get_paginator('list_objects_v2')
-    page_iterator = paginator.paginate(Bucket=bucket, Prefix="raw_docs/")
+    page_iterator = paginator.paginate(Bucket=bucket, Prefix=prefix_raw)
 
-    raw_files = []
+    records = []
     for page in page_iterator:
-        raw_files.extend(page.get("Contents", []))
+        for obj in page.get("Contents", []):
+            raw_key = obj['Key']
+            if not raw_key.endswith('.json.gz'):
+                continue
+            print(f"[PROCESS] {raw_key}")
 
-    if not raw_files:
-        print("No raw files found.")
+            # Read and decompress
+            raw_bytes = s3.get_object(Bucket=bucket, Key=raw_key)['Body'].read()
+            data = json.loads(gzip.decompress(raw_bytes))
+
+            # Clean fields
+            cleaned_record = {
+                "Date": data.get("Date", ""),
+                "Time": data.get("Time", ""),
+                "Tag": data.get("Tag", ""),
+                "Author": clean_text(data.get("Author", "")),
+                "Free": data.get("Free", ""),
+                "Title": clean_text(data.get("Title", "")),
+                "Content": clean_text(data.get("Content", "")),
+                "URL": data.get("URL", "")
+            }
+
+            records.append(cleaned_record)
+
+    if not records:
+        print("No valid documents found.")
         return
 
-    for obj in raw_files:
-        raw_key = obj['Key']
-        if not raw_key.endswith('.json.gz'):
-            continue
-        doc_id = os.path.basename(raw_key).replace('.json.gz', '')
-        cleaned_key = f"{prefix_cleaned}{doc_id}.json.gz"
+    # Convert to DataFrame and CSV
+    df = pd.DataFrame(records)
+    csv_buffer = StringIO()
+    df.to_csv(csv_buffer, index=False, quoting=csv.QUOTE_ALL)
 
-        # Skip if already cleaned
-        try:
-            s3.head_object(Bucket=bucket, Key=cleaned_key)
-            print(f"[SKIP] {cleaned_key} already exists.")
-            continue
-        except s3.exceptions.ClientError:
-            pass  # Skip if not found
-
-        # Download and clean
-        print(f"[CLEAN] {raw_key} → {cleaned_key}")
-        raw_bytes = s3.get_object(Bucket=bucket, Key=raw_key)['Body'].read()
-        data = json.loads(gzip.decompress(raw_bytes))
-
-        data["Content"] = clean_text(data.get("Content", ""))
-        data["Title"] = clean_text(data.get("Title", ""))
-
-        # Upload cleaned
-        cleaned_body = gzip.compress(json.dumps(data).encode("utf-8"))
-        s3.put_object(Bucket=bucket, Key=cleaned_key, Body=cleaned_body)
+    # Upload to S3
+    s3.put_object(Bucket=bucket, Key=output_csv_key, Body=csv_buffer.getvalue())
+    print(f" Final CSV written to s3://{bucket}/{output_csv_key}")
 
 if __name__ == "__main__":
-    clean_documents()
+    clean_documents_to_csv()
