@@ -7,6 +7,10 @@ import json
 import hashlib
 import gzip
 
+BUCKET_NAME = os.environ.get("RAW_BUCKET")
+if not BUCKET_NAME:
+    raise ValueError("Environment variable RAW_BUCKET is not set")
+
 
 # Hash URL which is unique
 def get_doc_id(url):
@@ -112,7 +116,7 @@ def scrape_articles():
 
                     # Step 2: Check for existence
                     try:
-                        s3.head_object(Bucket="crypto-search-pipeline-iqtedar", Key=s3_key)
+                        s3.head_object(Bucket=BUCKET_NAME, Key=s3_key)
                         print(f"{s3_key} already exists. Skipping.")
                         continue
                     except s3.exceptions.ClientError:
@@ -121,7 +125,7 @@ def scrape_articles():
                     compressed = gzip.compress(json.dumps(item).encode("utf-8"))
 
                     s3.put_object(
-                        Bucket="crypto-search-pipeline-iqtedar",
+                        Bucket=BUCKET_NAME,
                         Key=s3_key,
                         Body=compressed
                     )
@@ -158,7 +162,7 @@ def scrape_articles():
 
                 # Step 2: Check for existence
                 try:
-                    s3.head_object(Bucket="crypto-search-pipeline-iqtedar", Key=s3_key)
+                    s3.head_object(Bucket=BUCKET_NAME, Key=s3_key)
                     print(f"{s3_key} already exists. Skipping.")
                     continue
                 except s3.exceptions.ClientError:
@@ -167,7 +171,7 @@ def scrape_articles():
                 compressed = gzip.compress(json.dumps(item).encode("utf-8"))
 
                 s3.put_object(
-                    Bucket="crypto-search-pipeline-iqtedar",
+                    Bucket=BUCKET_NAME,
                     Key=s3_key,
                     Body=compressed
                 )
