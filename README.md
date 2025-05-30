@@ -6,6 +6,7 @@ This project builds a batch ETL pipeline to scrape, clean, store, and visualize 
 
 - Python/Docker for scraping and cleaning
 - S3 for intermediate storage
+- Terraform to provision AWS S3 buckets and Glue job
 - AWS Glue to load into Snowflake
 - Snowflake Views to clean up types and extract additional features
 - Tableau to visualize trends from the ingested articles
@@ -25,6 +26,10 @@ crypto-news-etl/
 │ ├── scraper.py
 │ ├── Dockerfile
 │ └── requirements.txt
+├── terraform/
+│ ├── main.tf # Defines S3 buckets, Glue job, IAM role
+│ ├── variables.tf
+│ └── outputs.tf
 ├── data/
 │ └── new_cleaned/ # cleaned data from S3 that is transferred to Snowflake
 ```
@@ -47,9 +52,52 @@ export AWS_ACCESS_KEY_ID=your_key
 export AWS_SECRET_ACCESS_KEY=your_secret
 export AWS_DEFAULT_REGION=us-east-1
 ```
+## Terraform Setup 
+
+Terraform sees the following AWS infrastructure:
+
+- Raw and cleaned S3 buckets  
+- IAM Role for Glue  
+- Glue Job configuration
+
+### Steps
+
+1. Navigate to the Terraform folder:
+
+    ```
+    cd terraform
+    ```
+
+2. Initialize and apply Terraform:
+
+    ```
+    terraform init
+    terraform apply
+    ```
+
+3. Generate a `.env` file using Terraform outputs:
+
+    ```
+    echo "RAW_BUCKET=$(terraform output -raw raw_bucket)" > ../.env
+    echo "CLEANED_BUCKET=$(terraform output -raw cleaned_bucket)" >> ../.env
+    ```
+
 ### Environment Setup
 
 - Use either Docker or run scripts locally, depending on your Airflow setup.
+
+For Dockers, Build the Docker images and run
+
+```
+cd scraper
+docker build -t scraper-image
+
+cd cleaner
+docker build -t cleaner-image
+
+docker run --env-file ../.env scraper-image
+docker run --env-file ../.env cleaner-image
+```
 
 ### Matching Names
 
@@ -60,8 +108,6 @@ export AWS_DEFAULT_REGION=us-east-1
   - Airflow DockerOperator commands
 
   - Docker build contexts
-
-- Hardcode your S3 bucket name where required in scraper.py and cleaner.py
 
 ## 2. Pipeline Flow
 ### Step 1: Scraping News Articles
