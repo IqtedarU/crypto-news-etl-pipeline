@@ -6,13 +6,21 @@ import unicodedata
 from bs4 import BeautifulSoup
 import html
 import pandas as pd
+import os
 from io import StringIO
 
 # Config
-bucket = "crypto-search-pipeline-iqtedar"
 region = "us-east-1"
 prefix_raw = "raw_docs/"
 output_csv_key = "final_csv/news_cleaned.csv"
+
+BUCKET_NAME = os.environ.get("RAW_BUCKET")
+if not BUCKET_NAME:
+    raise ValueError("Environment variable RAW_BUCKET is not set")
+CLEANED_BUCKET = os.environ.get("CLEANED_BUCKET")
+if not CLEANED_BUCKET:
+    raise ValueError("Environment variable CLEANED_BUCKET is not set")
+
 
 s3 = boto3.client("s3", region_name=region)
 
@@ -26,7 +34,7 @@ def clean_text(text):
 
 def clean_documents_to_csv():
     paginator = s3.get_paginator('list_objects_v2')
-    page_iterator = paginator.paginate(Bucket=bucket, Prefix=prefix_raw)
+    page_iterator = paginator.paginate(Bucket=BUCKET_NAME, Prefix=prefix_raw)
 
     records = []
     for page in page_iterator:
@@ -37,7 +45,7 @@ def clean_documents_to_csv():
             print(f"[PROCESS] {raw_key}")
 
             # Read and decompress
-            raw_bytes = s3.get_object(Bucket=bucket, Key=raw_key)['Body'].read()
+            raw_bytes = s3.get_object(Bucket=BUCKET_NAME, Key=raw_key)['Body'].read()
             data = json.loads(gzip.decompress(raw_bytes))
 
             # Clean fields
@@ -64,8 +72,8 @@ def clean_documents_to_csv():
     df.to_csv(csv_buffer, index=False, quoting=csv.QUOTE_ALL)
 
     # Upload to S3
-    s3.put_object(Bucket=bucket, Key=output_csv_key, Body=csv_buffer.getvalue())
-    print(f" Final CSV written to s3://{bucket}/{output_csv_key}")
+    s3.put_object(Bucket=CLEANED_BUCKET, Key=output_csv_key, Body=csv_buffer.getvalue())
+    print(f" Final CSV written to s3://{CLEANED_BUCKET}/{output_csv_key}")
 
 if __name__ == "__main__":
     clean_documents_to_csv()
