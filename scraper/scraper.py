@@ -6,6 +6,7 @@ from datetime import datetime
 import json
 import hashlib
 import gzip
+import os
 
 BUCKET_NAME = os.environ.get("RAW_BUCKET")
 if not BUCKET_NAME:
